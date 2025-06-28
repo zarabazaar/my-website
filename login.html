@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>🔐 Role-Based Login</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    body { font-family: sans-serif; background: #f0f0f0; padding: 20px; }
+    .card { background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); max-width: 500px; margin: 30px auto; }
+    .btn { background: #4285F4; color: white; padding: 10px 18px; border: none; border-radius: 6px; cursor: pointer; margin-top: 10px; }
+    .logout { background: #dc3545; }
+    .hidden { display: none; }
+    input, select { width: 100%; padding: 10px; margin-top: 10px; }
+  </style>
+</head>
+<body>
+
+<!-- 🔐 Login/Register Form -->
+<div class="card" id="loginCard">
+  <h3>🔐 Login / Register</h3>
+  <input type="email" id="email" placeholder="Email">
+  <input type="password" id="password" placeholder="Password">
+  <button class="btn" onclick="login()">Login</button>
+  <button class="btn" onclick="register()">Register</button>
+  <hr>
+  <button class="btn" onclick="loginWithGoogle()">Login with Google</button>
+</div>
+
+<!-- 🎭 Choose Role -->
+<div class="card hidden" id="chooseRoleCard">
+  <h3>🧩 Choose Role</h3>
+  <p>Hi <span id="userName"></span>, select your role:</p>
+  <select id="roleSelect">
+    <option value="">-- Select Role --</option>
+    <option value="user">User</option>
+    <option value="provider">Provider</option>
+  </select>
+  <button class="btn" onclick="saveRole()">Save Role</button>
+</div>
+
+<!-- 👤 User Panel -->
+<div class="card hidden" id="userUI">
+  <h3>👤 User Panel</h3>
+  <p>Email: <span id="userEmail"></span></p>
+  <button class="btn logout" onclick="logout()">Logout</button>
+</div>
+
+<!-- 🧑‍🔧 Provider Panel -->
+<div class="card hidden" id="providerUI">
+  <h3>🧑‍🔧 Provider Dashboard</h3>
+  <p>Email: <span id="providerEmail"></span></p>
+  <p>Wallet: <b><span id="wallet">0</span> points</b></p>
+  <button class="btn logout" onclick="logout()">Logout</button>
+</div>
+
+<!-- ✅ Firebase SDK -->
+<script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore-compat.js"></script>
+
+<script>
+  // ✅ Firebase init
+  if (!firebase.apps.length) {
+    firebase.initializeApp({
+      apiKey: "AIzaSyDzm51ZL75nEVDvtTNVvxTMp4cTMBmlxuM",
+      authDomain: "zara-bazaar-56c56.firebaseapp.com",
+      projectId: "zara-bazaar-56c56"
+    });
+  }
+
+  const auth = firebase.auth();
+  const db = firebase.firestore();
+
+  const loginCard = document.getElementById("loginCard");
+  const chooseRoleCard = document.getElementById("chooseRoleCard");
+  const userUI = document.getElementById("userUI");
+  const providerUI = document.getElementById("providerUI");
+
+  async function register() {
+    const email = document.getElementById("email").value.trim();
+    const password = document.getElementById("password").value.trim();
+    if (!email || !password) return alert("Enter email and password");
+    try {
+      await auth.createUserWithEmailAndPassword(email, password);
+      alert("✅ Registered! Now logged in.");
+    } catch (err) {
+      alert("❌ Registration Failed: " + err.message);
+    }
+  }
+
+  async function login() {
+    const email = document.getElementById("email").value.trim();
+    const password = document.getElementById("password").value.trim();
+    if (!email || !password) return alert("Enter email and password");
+    try {
+      await auth.signInWithEmailAndPassword(email, password);
+    } catch (err) {
+      alert("❌ Login Failed: " + err.message);
+    }
+  }
+
+  function loginWithGoogle() {
+    const provider = new firebase.auth.GoogleAuthProvider();
+    auth.signInWithPopup(provider).catch(err => alert("Google Login Failed: " + err.message));
+  }
+
+  function logout() {
+    auth.signOut();
+    location.reload();
+  }
+
+  async function saveRole() {
+    const selectedRole = document.getElementById("roleSelect").value;
+    const user = auth.currentUser;
+    if (!selectedRole || !user) return alert("Please select a role.");
+    const uid = user.uid;
+    await db.collection("users").doc(uid).set({ role: selectedRole }, { merge: true });
+    location.reload();
+  }
+
+  auth.onAuthStateChanged(async (user) => {
+    if (!user) {
+      loginCard.classList.remove("hidden");
+      return;
+    }
+
+    loginCard.classList.add("hidden");
+    const uid = user.uid;
+    const userRef = db.collection("users").doc(uid);
+
+    await userRef.set({
+      email: user.email,
+      name: user.displayName || user.email,
+      joinedAt: firebase.firestore.FieldValue.serverTimestamp()
+    }, { merge: true });
+
+    const snap = await userRef.get();
+    const data = snap.data();
+    const role = data.role;
+
+    if (!role) {
+      chooseRoleCard.classList.remove("hidden");
+      document.getElementById("userName").innerText = user.displayName || user.email;
+      return;
+    }
+
+    if (role === "provider") {
+      providerUI.classList.remove("hidden");
+      document.getElementById("providerEmail").innerText = user.email;
+
+      const walletRef = db.collection("wallets").doc(uid);
+      const walletSnap = await walletRef.get();
+      if (!walletSnap.exists) await walletRef.set({ points: 0 });
+      const wallet = walletSnap.exists ? walletSnap.data().points || 0 : 0;
+      document.getElementById("wallet").innerText = wallet;
+    } else {
+      userUI.classList.remove("hidden");
+      document.getElementById("userEmail").innerText = user.email;
+    }
+  });
+</script>
+</body>
+</html>
